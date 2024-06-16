@@ -1,0 +1,97 @@
+version: '3'
+
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper-flask
+    ports:
+      - "2181:2181"
+    networks:
+      - my_network
+
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka-flask
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-flask:2181
+      ALLOW_PLAINTEXT_LISTENER: yes
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: CLIENT://:9092,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: CLIENT://kafka-flask:9092,EXTERNAL://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: CLIENT
+    networks:
+      - my_network
+
+  redis:
+    image: redis
+    container_name: redis-flask
+    ports:
+      - "6379:6379"
+    networks:
+      - my_network
+
+  flask:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tagging_service
+    ports:
+      - "5000:5000"
+    depends_on:
+      - kafka
+      - redis 
+    command: python app.py
+    volumes:
+      - database_volume:/app/instance/
+    networks:
+      - my_network
+
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kafka_producer
+    depends_on:
+      - kafka
+    command: tail -F anything
+    volumes:
+      - database_volume:/app/instance/
+    networks:
+      - my_network
+  
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kafka_consumer
+    depends_on:
+      - kafka
+    command: tail -F anything
+    volumes:
+      - database_volume:/app/instance/
+    networks:
+      - my_network
+  
+  redis_check:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kafka_redis_check
+    depends_on:
+      - redis
+    command: python redis_check.py
+    volumes:
+      - database_volume:/app/instance/
+    networks:
+      - my_network
+
+networks:
+  my_network:
+
+volumes:
+  database_volume:
+
+# kafka setup from link => https://github.com/Java-Techie-jt/kafka-installation/blob/main/docker-compose.yml
